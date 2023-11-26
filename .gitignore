@@ -1,0 +1,5 @@
+# build temp dir
+cmake-build-*
+
+# IDE settings
+.idea

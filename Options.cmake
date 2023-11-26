@@ -1,0 +1,7 @@
+option(ANDROID_NDK_HOME "NDK path" C:/Users/<username>/AppData/Local/Android/Sdk/ndk/25.0.8775105)
+option(ANDROID_ABI "Android ABI" arm64-v8a)
+option(DEBUG_OUTPUT "Enable debug output" OFF)
+if (DEBUG_OUTPUT)
+    add_definitions(-DDEBUG_OUTPUT)
+    message(NOTICE "- Debug output is enabled")
+endif ()
