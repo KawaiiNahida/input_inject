@@ -64,6 +64,10 @@ namespace android {
         inline BitSet32 &getCurrentFingerIdBits() {
             return *(BitSet32 *) ((char *) this + 1054 * 4);
         }
+
+        inline float &getPointerGestureSwipeMaxWidthRatio() {
+            return *(float *) ((char *) this + 0x118);
+        }
     };
 
     // check struct based on reverse-engineering to make sure the builds are compatible with current compiler behavior
@@ -71,6 +75,21 @@ namespace android {
     static_assert(offsetof(InputDeviceContext, mDeviceId) == 28);
 }
 #define LOG_TAG "InputInject/CustomGesture"
+
+constexpr const char *XIAOMI_TOUCH_DEVICE_NAME = "Xiaomi Touch";
+
+TInstanceHook(void, hooks::LIBINPUT_READER,
+              "_ZN7android16TouchInputMapper20configureInputDeviceElPb",
+              android::TouchInputMapper, nsecs_t when, bool *outResetNeeded) {
+
+    if (this->mDeviceContext->mDevice->mIdentifier.name == XIAOMI_TOUCH_DEVICE_NAME) {
+        LOGI("configureInputDevice(deviceId=%d deviceName=%s)",
+             this->mDeviceContext->mDeviceId,
+             this->mDeviceContext->mDevice->mIdentifier.name.c_str());
+        getPointerGestureSwipeMaxWidthRatio() = 0.5f;
+    }
+    return original(this, when, outResetNeeded);
+}
 
 TInstanceHook(void, hooks::LIBINPUT_READER,
               "_ZN7android16TouchInputMapper14dispatchMotionElljjiiiiiiPKNS_17PointerPropertiesEPKNS_13PointerCoordsEPKjNS_8BitSet32Eiffl",
@@ -84,7 +103,7 @@ TInstanceHook(void, hooks::LIBINPUT_READER,
 
     static void *xiaomiTouchDevice = nullptr;
     static bool enableGestureTransform = true;
-    if (xiaomiTouchDevice == nullptr && this->mDeviceContext->mDevice->mIdentifier.name == "Xiaomi Touch") {
+    if (xiaomiTouchDevice == nullptr && this->mDeviceContext->mDevice->mIdentifier.name == XIAOMI_TOUCH_DEVICE_NAME) {
         xiaomiTouchDevice = this->mDeviceContext->mDevice;
     }
 
