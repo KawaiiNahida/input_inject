@@ -99,7 +99,8 @@ TInstanceHook(void, hooks::LIBINPUT_READER,
               int32_t edgeFlags, PropertiesArray *properties, CoordsArray *coords,
               IdToIndexArray *idToIndex, ::android::BitSet32 idBits, int32_t changedId, float xPrecision,
               float yPrecision, nsecs_t downTime, MotionClassification classification) {
-
+#pragma clang diagnostic push
+#pragma ide diagnostic ignored "readability-static-accessed-through-instance"
 
     static void *xiaomiTouchDevice = nullptr;
     static bool enableGestureTransform = true;
@@ -151,14 +152,14 @@ TInstanceHook(void, hooks::LIBINPUT_READER,
                     LOGD("handleModeSwitch: last_triple_tap_time, when=%lld inv=%lld", when,
                          (when - last_triple_tap_time));
                     if ((when - last_triple_tap_time) <= 1500 * 1000000LL) {
-                        if (tripleTapCounter >= 5) {
+                        if (tripleTapCounter >= 3) {
                             enableGestureTransform = !enableGestureTransform;
                             tripleTapCounter = 0;
                             LOGI("handleModeSwitch: REQUEST SWITCH CUSTOM GESTURE MODE, ENABLED=%d",
                                  enableGestureTransform);
                         }
                     } else {
-                        tripleTapCounter = 0;
+                        tripleTapCounter = 1;
                         LOGI("handleModeSwitch: timeout, reset counter, when=%lld",
                              last_triple_tap_time);
                     }
@@ -171,6 +172,88 @@ TInstanceHook(void, hooks::LIBINPUT_READER,
                 }
 
             }
+        };
+
+        auto handleTapGesture = [&]() -> bool {
+            if (curr_gesture == PointerGestureMode::TAP) {
+                LOGD("handleTapGesture: TAP, when=%lld", when);
+                auto new_properties = *properties;
+                new_properties.at(0).toolType = ToolType::MOUSE;
+                hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                       AMOTION_EVENT_ACTION_DOWN, 0, flags, metaState,
+                                       AMOTION_EVENT_BUTTON_PRIMARY,
+                                       edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                       xPrecision, yPrecision, downTime, classification);
+                hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                       AMOTION_EVENT_ACTION_BUTTON_PRESS, AMOTION_EVENT_BUTTON_PRIMARY, flags,
+                                       metaState,
+                                       AMOTION_EVENT_BUTTON_PRIMARY,
+                                       edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                       xPrecision, yPrecision, downTime, classification);
+                return false;
+            }
+
+            if (curr_gesture == PointerGestureMode::NEUTRAL &&
+                (last_gesture == PointerGestureMode::TAP_DRAG || last_gesture == PointerGestureMode::TAP)) {
+                auto new_properties = *properties;
+                new_properties.at(0).toolType = ToolType::MOUSE;
+                hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                       AMOTION_EVENT_ACTION_BUTTON_RELEASE, AMOTION_EVENT_BUTTON_PRIMARY, flags,
+                                       metaState,
+                                       0,
+                                       edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                       xPrecision, yPrecision, downTime, classification);
+                hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                       AMOTION_EVENT_ACTION_UP, 0, flags, metaState, 0,
+                                       edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                       xPrecision, yPrecision, downTime, classification);
+                LOGD("handleTapGesture: TAP OR DRAG RELEASED, when=%lld", when);
+                return true;
+            }
+            return false;
+        };
+
+        auto handleBtnClickDragGesture = [&]() -> bool {
+            auto new_properties = *properties;
+            new_properties.at(0).toolType = ToolType::MOUSE;
+            if (curr_gesture == PointerGestureMode::BUTTON_CLICK_OR_DRAG &&
+                last_gesture != PointerGestureMode::BUTTON_CLICK_OR_DRAG) {
+                LOGD("handleTapGesture: TAP, when=%lld", when);
+                hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                       AMOTION_EVENT_ACTION_DOWN, 0, flags, metaState,
+                                       AMOTION_EVENT_BUTTON_PRIMARY,
+                                       edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                       xPrecision, yPrecision, downTime, classification);
+                hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                       AMOTION_EVENT_ACTION_BUTTON_PRESS, AMOTION_EVENT_BUTTON_PRIMARY, flags,
+                                       metaState,
+                                       AMOTION_EVENT_BUTTON_PRIMARY,
+                                       edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                       xPrecision, yPrecision, downTime, classification);
+                return true;
+            }
+
+            if (curr_gesture == PointerGestureMode::HOVER && last_gesture == PointerGestureMode::BUTTON_CLICK_OR_DRAG) {
+
+                hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                       AMOTION_EVENT_ACTION_BUTTON_RELEASE, AMOTION_EVENT_BUTTON_PRIMARY, flags,
+                                       metaState,
+                                       0,
+                                       edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                       xPrecision, yPrecision, downTime, classification);
+                hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                       AMOTION_EVENT_ACTION_UP, 0, flags, metaState, 0,
+                                       edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                       xPrecision, yPrecision, downTime, classification);
+
+                LOGD("handleTapGesture: TAP OR DRAG RELEASED, when=%lld", when);
+                return true;
+            }
+            hookInstance->original(hookInstance, when, readTime, policyFlags, source,
+                                   action, AMOTION_EVENT_BUTTON_PRIMARY, flags, metaState, AMOTION_EVENT_BUTTON_PRIMARY,
+                                   edgeFlags, &new_properties, coords, idToIndex, idBits, changedId,
+                                   xPrecision, yPrecision, downTime, classification);
+            return true;
         };
 
         auto handlePressGesture = [&]() -> bool {
@@ -231,6 +314,7 @@ TInstanceHook(void, hooks::LIBINPUT_READER,
             }
             return false;
         };
+
         auto handleSwipeGesture = [&]() -> bool {
             static float last_x = 0;
             static float last_y = 0;
@@ -325,6 +409,8 @@ TInstanceHook(void, hooks::LIBINPUT_READER,
         if (enableGestureTransform) {
             cancel_gesture = handlePressGesture() || cancel_gesture;
             cancel_gesture = handleSwipeGesture() || cancel_gesture;
+            cancel_gesture = handleTapGesture() || cancel_gesture;
+            cancel_gesture = handleBtnClickDragGesture() || cancel_gesture;
         }
         handleModeSwitch();
 
@@ -335,16 +421,17 @@ TInstanceHook(void, hooks::LIBINPUT_READER,
             return;
         } else {
             return original(this, when, readTime, policyFlags, source, action, actionButton, flags, metaState,
-                            buttonState,
-                            edgeFlags, properties, coords, idToIndex, idBits, changedId, xPrecision, yPrecision,
-                            downTime,
-                            classification);
+                            buttonState, edgeFlags, properties, coords, idToIndex, idBits, changedId,
+                            xPrecision, yPrecision, downTime, classification);
         }
     }
 
     return original(this, when, readTime, policyFlags, source, action, actionButton, flags, metaState, buttonState,
                     edgeFlags, properties, coords, idToIndex, idBits, changedId, xPrecision, yPrecision, downTime,
                     classification);
+#pragma clang diagnostic pop
 }
+
+
 
 
